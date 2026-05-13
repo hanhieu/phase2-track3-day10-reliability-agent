@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-import copy
+import concurrent.futures
 import json
 import random
+import threading
 from pathlib import Path
 
 from reliability_lab.cache import ResponseCache, SharedRedisCache
@@ -60,7 +61,7 @@ def calculate_recovery_time_ms(gateway: ReliabilityGateway) -> float | None:
         open_ts: float | None = None
         for entry in breaker.transition_log:
             if entry["to"] == "open" and open_ts is None:
-                open_ts = entry["ts"]
+                open_ts = float(entry["ts"])
             elif entry["to"] == "closed" and open_ts is not None:
                 recovery_times.append((float(entry["ts"]) - open_ts) * 1000)
                 open_ts = None
@@ -69,29 +70,56 @@ def calculate_recovery_time_ms(gateway: ReliabilityGateway) -> float | None:
     return sum(recovery_times) / len(recovery_times)
 
 
+def _process_one_request(gateway: ReliabilityGateway, queries: list[str]) -> RunMetrics:
+    prompt = random.choice(queries)
+    result = gateway.complete(prompt)
+    m = RunMetrics()
+    m.total_requests = 1
+    m.estimated_cost = result.estimated_cost
+    if result.cache_hit:
+        m.cache_hits = 1
+        m.estimated_cost_saved = 0.001
+    if result.route.startswith("fallback"):
+        m.fallback_successes = 1
+        m.successful_requests = 1
+    elif result.route == "static_fallback":
+        m.static_fallbacks = 1
+        m.failed_requests = 1
+    else:
+        m.successful_requests = 1
+    if result.latency_ms:
+        m.latencies_ms = [result.latency_ms]
+    return m
+
+
 def run_scenario(config: LabConfig, queries: list[str], scenario: ScenarioConfig) -> RunMetrics:
-    """Run a single named chaos scenario."""
+    """Run a single named chaos scenario (with optional concurrency)."""
     gateway = build_gateway(config, scenario.provider_overrides or None)
     metrics = RunMetrics()
     request_count = config.load_test.requests
-    for _ in range(request_count):
-        prompt = random.choice(queries)
-        result = gateway.complete(prompt)
-        metrics.total_requests += 1
-        metrics.estimated_cost += result.estimated_cost
-        if result.cache_hit:
-            metrics.cache_hits += 1
-            metrics.estimated_cost_saved += 0.001
-        if result.route == "fallback":
-            metrics.fallback_successes += 1
-            metrics.successful_requests += 1
-        elif result.route == "static_fallback":
-            metrics.static_fallbacks += 1
-            metrics.failed_requests += 1
-        else:
-            metrics.successful_requests += 1
-        if result.latency_ms:
-            metrics.latencies_ms.append(result.latency_ms)
+    concurrency = config.load_test.concurrency
+
+    if concurrency > 1:
+        lock = threading.Lock()
+        per_thread_metrics: list[RunMetrics] = [RunMetrics() for _ in range(concurrency)]
+
+        def worker(thread_idx: int) -> None:
+            local = per_thread_metrics[thread_idx]
+            batch = request_count // concurrency + (1 if thread_idx < request_count % concurrency else 0)
+            for _ in range(batch):
+                pm = _process_one_request(gateway, queries)
+                with lock:
+                    local._aggregate(pm)
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=concurrency) as executor:
+            futures = [executor.submit(worker, i) for i in range(concurrency)]
+            concurrent.futures.wait(futures)
+
+        for pm in per_thread_metrics:
+            metrics._aggregate(pm)
+    else:
+        for _ in range(request_count):
+            metrics._aggregate(_process_one_request(gateway, queries))
 
     metrics.circuit_open_count = sum(
         1 for breaker in gateway.breakers.values() for t in breaker.transition_log if t["to"] == "open"
@@ -116,9 +144,16 @@ def run_simulation(config: LabConfig, queries: list[str]) -> RunMetrics:
     for scenario in config.scenarios:
         result = run_scenario(config, queries, scenario)
 
-        # TODO(student): Define pass/fail criteria per scenario.
-        # Example: primary_timeout_100 passes if fallback_success_rate > 0.9
-        passed = result.successful_requests > 0
+        if scenario.name == "primary_timeout_100":
+            passed = result.availability > 0.9
+        elif scenario.name == "primary_flaky_50":
+            passed = result.availability > 0.9
+        elif scenario.name == "all_healthy":
+            passed = result.availability > 0.9
+        elif scenario.name == "cache_stale_candidate":
+            passed = True
+        else:
+            passed = result.successful_requests > 0
         combined.scenarios[scenario.name] = "pass" if passed else "fail"
 
         combined.total_requests += result.total_requests

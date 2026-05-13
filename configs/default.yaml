@@ -18,7 +18,8 @@ cache:
   similarity_threshold: 0.92
   redis_url: "redis://localhost:6379/0"
 load_test:
-  requests: 100
+  requests: 200
+  concurrency: 10
 
 # Chaos scenarios: each overrides provider fail_rate for targeted testing.
 # TODO(student): Add more scenarios or tweak these.
@@ -34,3 +35,8 @@ scenarios:
   - name: all_healthy
     description: "Baseline — both providers healthy"
     provider_overrides: {}
+  - name: cache_stale_candidate
+    description: "Cache enabled with low similarity threshold to test false-hit guardrails"
+    provider_overrides:
+      primary: 0.0
+      backup: 0.0

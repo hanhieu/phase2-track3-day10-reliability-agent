@@ -59,6 +59,17 @@ class RunMetrics(BaseModel):
             "scenarios": self.scenarios,
         }
 
+    def _aggregate(self, other: RunMetrics) -> None:
+        self.total_requests += other.total_requests
+        self.successful_requests += other.successful_requests
+        self.failed_requests += other.failed_requests
+        self.fallback_successes += other.fallback_successes
+        self.static_fallbacks += other.static_fallbacks
+        self.cache_hits += other.cache_hits
+        self.estimated_cost += other.estimated_cost
+        self.estimated_cost_saved += other.estimated_cost_saved
+        self.latencies_ms.extend(other.latencies_ms)
+
     def write_json(self, path: str | Path) -> None:
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         Path(path).write_text(json.dumps(self.to_report_dict(), indent=2, ensure_ascii=False))

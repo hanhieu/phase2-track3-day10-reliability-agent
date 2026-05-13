@@ -1,0 +1,27 @@
+﻿============================= test session starts =============================
+platform win32 -- Python 3.14.4, pytest-9.0.3, pluggy-1.6.0 -- C:\Users\Admin\Documents\GitHub\phase2-track3-day10-reliability-agent\.venv\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Users\Admin\Documents\GitHub\phase2-track3-day10-reliability-agent
+configfile: pyproject.toml
+testpaths: tests
+plugins: cov-7.1.0
+collecting ... collected 16 items
+
+tests/test_circuit_breaker.py::test_circuit_opens_after_consecutive_failures PASSED [  6%]
+tests/test_circuit_breaker.py::test_circuit_transitions_in_log PASSED    [ 12%]
+tests/test_circuit_breaker.py::test_backup_serves_when_primary_open PASSED [ 18%]
+tests/test_circuit_breaker.py::test_static_fallback_when_all_providers_fail PASSED [ 25%]
+tests/test_config.py::test_default_config_loads PASSED                   [ 31%]
+tests/test_config.py::test_scenarios_loaded PASSED                       [ 37%]
+tests/test_gateway_contract.py::test_gateway_returns_response_with_route_reason PASSED [ 43%]
+tests/test_metrics.py::test_percentile PASSED                            [ 50%]
+tests/test_metrics.py::test_report_dict_contains_required_metrics PASSED [ 56%]
+tests/test_redis_cache.py::test_redis_connection PASSED                  [ 62%]
+tests/test_redis_cache.py::test_set_and_exact_get PASSED                 [ 68%]
+tests/test_redis_cache.py::test_ttl_expiry PASSED                        [ 75%]
+tests/test_redis_cache.py::test_shared_state_across_instances PASSED     [ 81%]
+tests/test_redis_cache.py::test_privacy_query_not_cached PASSED          [ 87%]
+tests/test_redis_cache.py::test_false_hit_different_years PASSED         [ 93%]
+tests/test_todo_requirements.py::test_semantic_cache_should_not_false_hit_different_intent PASSED [100%]
+
+============================= 16 passed in 2.76s ==============================
